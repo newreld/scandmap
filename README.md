@@ -10,6 +10,8 @@ and shows every town as a circle whose area matches its population.
 - Filter by population and country, search, a city card with key facts, and a shortlist
 - WebGL rendering (deck.gl) for smooth panning and zooming; trackpad pinch zooms, two-finger swipe pans
 
+Live: https://newreld.github.io/scandmap/ (published from `web/` by `.github/workflows/pages.yml` on every push to `main`)
+
 ## Run it
 
 The page loads its data with `fetch`, so it needs a local web server (opening `index.html` as a file won't work):
