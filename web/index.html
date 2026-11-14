@@ -1,0 +1,822 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scandinavia Trip Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC:wght@500;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sidebar of controls (left) + dedicated map area (right) that the map always fills; overlays on phones. */
+:root {
+  --paper: #f3f1ea;        /* panel ground, a lichen-tinted off-white */
+  --ink: #1f2a2e;          /* text, deep fjord slate */
+  --ink-soft: #5b6a6e;
+  --rule: #d6d9d2;
+  --sweden: #b5372b;       /* city symbols in Sweden: Falu red */
+  --neighbour: #4e6470;    /* cities in NO / DK / FI */
+  --context: #8a969b;      /* towns in surrounding countries */
+  --sidebar: 320px;
+  --motorway: #c8562e;
+  --trunk: #d9893a;
+  --primary-road: #f0c24b;
+  --rail: #3b3b3b;
+  --water: #7fa7c6;
+  --water-fill: #b8d3e6;
+  --border: #7a5c8a;
+  --focus: #1d6fa5;
+  --font-display: "Alegreya Sans SC", "Gill Sans", "Trebuchet MS", sans-serif;
+  --font-body: "Alegreya Sans", "Gill Sans", "Trebuchet MS", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1b2225; --ink: #e9ece6; --ink-soft: #a3b0b3; --rule: #34403f;
+    --neighbour: #3e5560; --focus: #6cb6e6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1b2225; --ink: #e9ece6; --ink-soft: #a3b0b3; --rule: #34403f;
+  --neighbour: #3e5560; --focus: #6cb6e6; color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; overflow: hidden; }
+[hidden] { display: none !important; }
+html { background: var(--paper); }
+body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15px; overflow: hidden; }
+#map { position: fixed; inset: 0 0 0 var(--sidebar); touch-action: none; background: #a6c6de; }
+
+.panel {
+  position: fixed; z-index: 5; background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(6px); border: 1px solid var(--rule); border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(20, 30, 35, .18);
+}
+#controls {
+  top: 0; bottom: 0; left: 0; width: var(--sidebar); box-sizing: border-box;
+  border-radius: 0; border-width: 0 1px 0 0; box-shadow: none; backdrop-filter: none; background: var(--paper);
+  overflow: auto; display: flex; flex-direction: column; gap: 14px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 18px calc(16px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
+}
+#controls header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: .02em; line-height: 1.05; text-wrap: balance; }
+.sub { margin: 4px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.35; }
+.toggle-panel { display: none; }
+h2 {
+  margin: 0 0 6px; font-family: var(--font-display); font-size: 13px; font-weight: 500;
+  letter-spacing: .08em; color: var(--ink-soft);
+}
+section { display: flex; flex-direction: column; gap: 6px; }
+.rule { border-top: 1px solid var(--rule); padding-top: 12px; }
+
+#search { width: 100%; box-sizing: border-box; font: inherit; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); }
+.search-wrap { position: relative; }
+#results { position: absolute; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px 0; list-style: none; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; z-index: 3; box-shadow: 0 6px 16px rgba(0,0,0,.15); }
+#results li { padding: 5px 9px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+#results li[aria-selected="true"], #results li:hover { background: color-mix(in srgb, var(--focus) 14%, transparent); }
+#results .pop, .num { font-family: var(--font-data); font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.range-row { display: flex; align-items: center; gap: 10px; }
+input[type="range"] { flex: 1; accent-color: var(--sweden); }
+#minPopLabel { min-width: 64px; text-align: right; font-family: var(--font-data); font-size: 13px; }
+.count { font-size: 13px; color: var(--ink-soft); }
+
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.checks label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 14px; }
+.swatch { width: 18px; height: 0; flex: none; border-top: 3px solid; }
+.swatch.dot { width: 10px; height: 10px; border: 0; border-radius: 50%; }
+input[type="checkbox"] { accent-color: var(--ink); margin: 0; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+#legend svg { display: block; overflow: visible; }
+#legend text { font-family: var(--font-data); font-size: 11px; fill: var(--ink-soft); }
+.note { font-size: 12px; color: var(--ink-soft); line-height: 1.4; margin: 0; }
+
+#shortlist ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+#shortlist li button.name { all: unset; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+#shortlist li { font-size: 14px; }
+#shortlist .row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.x { all: unset; cursor: pointer; color: var(--ink-soft); padding: 0 4px; font-size: 15px; }
+.x:hover { color: var(--sweden); }
+
+#card {
+  right: max(12px, env(safe-area-inset-right, 0px)); top: calc(12px + env(safe-area-inset-top, 0px));
+  width: 250px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+}
+#card h3 { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.1; padding-right: 22px; }
+#card .meta { color: var(--ink-soft); font-size: 13px; }
+#card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 14px; }
+#card dt { color: var(--ink-soft); }
+#card dd { margin: 0; text-align: right; white-space: nowrap; font-family: var(--font-data); font-size: 13px; font-variant-numeric: tabular-nums; }
+#card .close { position: absolute; top: 8px; right: 10px; }
+.btn { font: inherit; font-weight: 500; padding: 7px 10px; border-radius: 4px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); cursor: pointer; }
+.btn.secondary { background: transparent; color: var(--ink); }
+.links { display: flex; gap: 12px; font-size: 13px; }
+.links a { color: var(--focus); }
+
+#scalebar { left: auto; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); padding: 6px 10px 7px; font-family: var(--font-data); font-size: 11px; }
+#scalebar .bar { height: 5px; border: 1.5px solid var(--ink); border-top: 0; margin-top: 3px; }
+.zoom-btns { position: fixed; z-index: 5; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(58px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; overflow: hidden; }
+.zoom-btns button { font: 500 18px var(--font-body); width: 34px; height: 34px; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+.zoom-btns button + button { border-top: 1px solid var(--rule); }
+
+#tip { position: fixed; z-index: 6; pointer-events: none; padding: 4px 8px; font-size: 13px; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; box-shadow: 0 3px 10px rgba(0,0,0,.15); white-space: nowrap; }
+#tip b { font-weight: 700; }
+
+@media (max-width: 760px) {
+  #map { left: 0; }
+  #controls {
+    top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; left: max(12px, env(safe-area-inset-left, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px)); width: auto; max-height: 46%;
+    padding: 14px 16px 16px; border-width: 1px; border-radius: 6px; box-shadow: 0 6px 24px rgba(20, 30, 35, .18);
+  }
+  #controls.collapsed > :not(header) { display: none; }
+  .toggle-panel { display: inline-block; font: inherit; font-size: 13px; padding: 3px 8px; border: 1px solid var(--rule); border-radius: 4px; background: transparent; color: var(--ink); }
+  #card { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: auto; }
+  #scalebar, .zoom-btns { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="map" aria-label="Map of Sweden with parts of Norway, Denmark and Finland"></div>
+
+<aside id="controls" class="panel">
+  <header>
+    <div>
+      <h1>Scandinavia Trip Map</h1>
+      <p class="sub">Equal-area projection, so sizes compare fairly. Circle area = residents.</p>
+    </div>
+    <button class="toggle-panel" id="togglePanel" aria-expanded="true">Hide</button>
+  </header>
+
+  <section>
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="Find a city or town…" autocomplete="off" aria-label="Find a city or town">
+      <ul id="results" hidden></ul>
+    </div>
+  </section>
+
+  <section class="rule">
+    <h2>Minimum population</h2>
+    <div class="range-row">
+      <input id="minPop" type="range" min="0" max="100" step="1" value="38" aria-label="Minimum population">
+      <span id="minPopLabel">5,000</span>
+    </div>
+    <span class="count" id="count"></span>
+    <div class="checks" id="countries">
+      <label><input type="checkbox" id="c-SE" value="SE" checked> Sweden</label>
+      <label><input type="checkbox" id="c-NO" value="NO" checked> Norway</label>
+      <label><input type="checkbox" id="c-DK" value="DK" checked> Denmark</label>
+      <label><input type="checkbox" id="c-FI" value="FI"> Finland</label>
+      <label><input type="checkbox" id="c-XX" value="XX" checked> Other countries</label>
+      <label style="grid-column: 1 / -1"><input type="checkbox" id="suburbs"> Include suburbs of big cities</label>
+    </div>
+  </section>
+
+  <section class="rule" id="legend">
+    <h2>City size</h2>
+    <svg id="legendSvg" width="250" height="64" aria-hidden="true"></svg>
+    <div class="checks" style="grid-template-columns: 1fr 1fr">
+      <span style="display:flex;align-items:center;gap:7px;font-size:13px"><span class="swatch dot" style="background:var(--sweden)"></span>Sweden</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:13px"><span class="swatch dot" style="background:var(--neighbour)"></span>NO · DK · FI</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:13px;grid-column:1 / -1"><span class="swatch dot" style="background:var(--context)"></span>Other countries (15,000+ only)</span>
+    </div>
+  </section>
+
+  <section class="rule">
+    <h2>Layers</h2>
+    <div class="checks" id="layers">
+      <label><input type="checkbox" id="l-roads" checked><span class="swatch" style="border-color:var(--motorway)"></span>Roads</label>
+      <label><input type="checkbox" id="l-rail" checked><span class="swatch" style="border-top-style:dashed;border-color:var(--rail)"></span>Railways</label>
+      <label><input type="checkbox" id="l-rivers" checked><span class="swatch" style="border-color:var(--water)"></span>Rivers</label>
+      <label><input type="checkbox" id="l-lakes" checked><span class="swatch" style="border-width:7px;border-color:var(--water-fill)"></span>Lakes</label>
+      <label><input type="checkbox" id="l-borders" checked><span class="swatch" style="border-top-style:dashed;border-color:var(--border)"></span>Borders</label>
+      <label><input type="checkbox" id="l-relief" checked><span class="swatch" style="border-width:7px;border-color:#c9b48f"></span>Terrain</label>
+    </div>
+  </section>
+
+  <section class="rule" id="shortlist">
+    <h2>Shortlist</h2>
+    <p class="note" id="shortEmpty">Click a circle, then “Add to shortlist” to collect places you might visit.</p>
+    <ol id="shortItems"></ol>
+  </section>
+
+  <p class="note rule">Population: GeoNames (municipality or locality figures, varies by place). Terrain: Mapzen/AWS Terrain Tiles. Water, borders, rail: Natural Earth. <span id="roadSource">Roads: Natural Earth major highways.</span></p>
+</aside>
+
+<aside id="card" class="panel" hidden aria-live="polite">
+  <button class="x close" id="cardClose" aria-label="Close">✕</button>
+  <div>
+    <h3 id="cardName"></h3>
+    <div class="meta" id="cardMeta"></div>
+  </div>
+  <dl id="cardData"></dl>
+  <button class="btn" id="cardShort">Add to shortlist</button>
+  <div class="links" id="cardLinks"></div>
+</aside>
+
+<div class="panel" id="scalebar"><span id="scaleText">100 km</span><div class="bar" id="scaleBar"></div></div>
+<div class="panel zoom-btns"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button></div>
+<div id="tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@8.9.35/dist.min.js"></script>
+<script>
+// Projected extent (metres, spherical LAEA lat0=62 lon0=15) and raster resolution — must match scripts/proj.py.
+// World coordinates on the GPU are "map pixels": the detailed relief's pixel grid (x right, y down).
+const EXTENT = [-1300000, -1100000, 1250000, 1050000], RES = 500;
+const W = (EXTENT[2] - EXTENT[0]) / RES, H = (EXTENT[3] - EXTENT[1]) / RES;
+// Coarser outer ring (scripts/proj.py OUTER_EXTENT) gives room to pan any part of Scandinavia to the centre
+const OUTER = [-2000000, -1800000, 1900000, 1550000];
+const OX = (OUTER[0] - EXTENT[0]) / RES, OY = (EXTENT[3] - OUTER[3]) / RES;
+const OW = (OUTER[2] - OUTER[0]) / RES, OH = (OUTER[3] - OUTER[1]) / RES;
+const MAX_VIEW_KM = 2400;  // furthest zoom-out shows at most this many km across
+const MAX_K = 24;
+const toPx = ([x, y]) => [(x - EXTENT[0]) / RES, (EXTENT[3] - y) / RES];
+const FOCUS = new Set(["SE", "NO", "DK", "FI"]);
+const regionNames = (() => { try { return new Intl.DisplayNames(["en"], { type: "region" }); } catch { return null; } })();
+const countryName = cc => (regionNames && regionNames.of(cc)) || cc;
+const css = getComputedStyle(document.documentElement);
+const rgb = (token, a = 255) => { const c = d3.color(css.getPropertyValue(token).trim()); return [c.r, c.g, c.b, a]; };
+const fmt = d3.format(",");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// Population slider: log scale 200 … 500,000
+const popScale = d3.scaleLog().domain([200, 500000]).range([0, 100]);
+const niceStep = v => { const m = Math.pow(10, Math.floor(Math.log10(v))); return Math.round(v / m * 2) / 2 * m; };
+
+// Circle area ∝ population; radius grows gently with zoom so big cities don't swamp the map
+const R_PER_SQRT = 0.03, R_MIN = 1.4;
+const zoomGrowth = k => Math.pow(k, 0.45);
+const radius = (pop, k) => Math.max(R_MIN, Math.sqrt(pop) * R_PER_SQRT * zoomGrowth(k));
+
+const mapEl = document.getElementById("map");
+let cities = [], visible = [], selected = null, layersData = null;
+let shortlist = store.get("shortlist", []);
+let view = { x: W / 2, y: H / 2, k: 0.3 };   // map-pixel point at the screen centre, and scale
+const layerOn = {};
+
+function viewport() {
+  const r = mapEl.getBoundingClientRect();
+  return { width: r.width || innerWidth, height: r.height > 100 ? r.height : innerHeight };
+}
+const screenX = px => (px - view.x) * view.k + viewport().width / 2;
+const screenY = py => (py - view.y) * view.k + viewport().height / 2;
+
+// The map always fills the map area, and zooming out stops at MAX_VIEW_KM across
+function minZoomK() {
+  const { width, height } = viewport();
+  return Math.max(width / OW, height / OH, Math.max(width, height) / (MAX_VIEW_KM * 1000 / RES));
+}
+function clampView(v) {
+  const { width, height } = viewport();
+  const k = Math.min(MAX_K, Math.max(minZoomK(), v.k));
+  const hw = width / 2 / k, hh = height / 2 / k;
+  return {
+    k,
+    x: Math.min(OX + OW - hw, Math.max(OX + hw, v.x)),
+    y: Math.min(OY + OH - hh, Math.max(OY + hh, v.y)),
+  };
+}
+const toViewState = (v, extra = {}) => ({ target: [v.x, v.y, 0], zoom: Math.log2(v.k), ...extra });
+
+const deckgl = new deck.Deck({
+  parent: mapEl,
+  views: new deck.OrthographicView({ id: "map", flipY: true }),
+  viewState: toViewState(view),
+  // Wheel and trackpad input is handled below (pinch = zoom, two-finger swipe = pan); deck handles drag and touch
+  controller: { dragRotate: false, touchRotate: false, doubleClickZoom: true, inertia: 250, scrollZoom: false, keyboard: false },
+  onViewStateChange: ({ viewState }) => {
+    const k = Math.pow(2, viewState.zoom);
+    const v = clampView({ x: viewState.target[0], y: viewState.target[1], k });
+    const clamped = v.x !== viewState.target[0] || v.y !== viewState.target[1] || v.k !== k;
+    // Pass deck's own view state back untouched: it recognises its zoom/inertia animation frames only by exact
+    // equality, and a rebuilt object (even off by a rounding error) would cancel the animation
+    setView(v, clamped ? null : viewState);
+  },
+  getCursor: ({ isDragging, isHovering }) => isDragging ? "grabbing" : isHovering ? "pointer" : "grab",
+  onClick: info => { if (!info.object && selected) deselect(); },
+  onAfterRender: drawLabelCanvas,
+  layers: [],
+});
+
+// viewState: the controller's own object when it needed no clamping, otherwise rebuilt from v
+function setView(v, viewState = null) {
+  const zoomChanged = Math.abs(v.k - view.k) > 1e-9;
+  view = v;
+  deckgl.setProps({ viewState: viewState || toViewState(v) });
+  scheduleOverlay(zoomChanged);
+}
+
+function animateTo(v, duration) {
+  v = clampView(v);
+  if (reduceMotion) duration = 0;
+  view = v;
+  deckgl.setProps({ viewState: toViewState(v, duration ? {
+    transitionDuration: duration, transitionInterpolator: new deck.LinearInterpolator(["target", "zoom"]),
+    transitionEasing: d3.easeCubicInOut,
+  } : {}) });
+  scheduleOverlay(true);
+}
+
+// Zoom by a factor while keeping the map point under the screen position (sx, sy) in place
+function zoomAround(factor, sx, sy) {
+  const { width, height } = viewport();
+  const k = Math.min(MAX_K, Math.max(minZoomK(), view.k * factor));
+  const wx = view.x + (sx - width / 2) / view.k, wy = view.y + (sy - height / 2) / view.k;
+  setView(clampView({ k, x: wx - (sx - width / 2) / k, y: wy - (sy - height / 2) / k }));
+}
+
+// Mac trackpads send both pinch and two-finger swipes as wheel events; pinch arrives with ctrlKey set.
+// Telling a mouse wheel (zoom) from a two-finger swipe (pan), per gesture, with the signals browsers give:
+//  - Firefox reports a wheel in lines; Chrome in notches of exactly 120 (legacy wheelDeltaY);
+//  - macOS Safari/Chrome report wheel ticks as multiples of 4.000244140625 px (also used by Mapbox GL);
+//  - Safari wheel ticks are whole multiples of 4 px; trackpad steps vary (7, 13, 22…) or are fractional;
+//  - a lone multiple of 4 is undecided: wait 40 ms for a second event to tell.
+const MAC_WHEEL_STEP = 4.000244140625;
+const wheelSignal = e => {
+  if (e.deltaMode !== 0) return "mouse";
+  if (e.deltaX !== 0) return "trackpad";
+  if (e.wheelDeltaY && e.wheelDeltaY % 120 === 0) return "mouse";
+  if (e.deltaY !== 0 && e.deltaY % MAC_WHEEL_STEP === 0) return "mouse";
+  if (Math.abs(e.deltaY) < 4 || !Number.isInteger(e.deltaY) || e.deltaY % 4 !== 0) return "trackpad";
+  return null;  // whole multiple of 4: Safari wheel tick, or a trackpad step by coincidence
+};
+let wheelType = null, lastWheel = 0, pendingWheel = null, pendingTimer = 0;
+
+function applyWheel(type, w) {
+  if (w.zoomKey) zoomAround(Math.exp(-w.dy * 0.012), w.sx, w.sy);  // pinch, or Ctrl/⌘ + wheel
+  else if (type === "mouse") {
+    // ~19% zoom per notch, whatever the browser's unit for a notch
+    zoomAround(Math.pow(2, -Math.sign(w.dy) * Math.min(w.notches, 3) * 0.25), w.sx, w.sy);
+  } else setView(clampView({ k: view.k, x: view.x + w.dx / view.k, y: view.y + w.dy / view.k }));
+}
+
+mapEl.addEventListener("wheel", e => {
+  e.preventDefault();
+  const r = mapEl.getBoundingClientRect();
+  const lineScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? viewport().height : 1;
+  const w = { sx: e.clientX - r.left, sy: e.clientY - r.top, dx: e.deltaX * lineScale, dy: e.deltaY * lineScale,
+              zoomKey: e.ctrlKey || e.metaKey,
+              // A notch is 3 lines in Firefox, ~100 px in Chrome, and one small event in Safari
+              notches: e.deltaMode === 1 ? Math.abs(e.deltaY) / 3 : e.deltaMode === 2 ? 3
+                : Math.abs(e.deltaY) >= 50 ? Math.abs(e.deltaY) / 100 : 1 };
+  const now = performance.now(), gap = now - lastWheel;
+  lastWheel = now;
+  if (w.zoomKey) { applyWheel(null, w); return; }
+
+  const signal = wheelSignal(e);
+  if (pendingWheel) {
+    // Second event within 40 ms of an undecided first one: two multiples of 4 in a row means a wheel
+    clearTimeout(pendingTimer);
+    wheelType = signal || "mouse";
+    applyWheel(wheelType, pendingWheel); pendingWheel = null;
+    applyWheel(wheelType, w);
+    return;
+  }
+  if (gap > 300) wheelType = signal;               // new gesture
+  else if (wheelType === "mouse" && signal === "trackpad") wheelType = "trackpad";
+  if (!wheelType) {
+    pendingWheel = w;
+    pendingTimer = setTimeout(() => { wheelType = "mouse"; applyWheel("mouse", pendingWheel); pendingWheel = null; }, 40);
+    return;
+  }
+  applyWheel(wheelType, w);
+}, { passive: false });
+
+// Safari reports trackpad pinch as gesture events instead of ctrl+wheel
+let gestureScale = 1;
+mapEl.addEventListener("gesturestart", e => { e.preventDefault(); gestureScale = 1; });
+mapEl.addEventListener("gesturechange", e => {
+  e.preventDefault();
+  const r = mapEl.getBoundingClientRect();
+  zoomAround(e.scale / gestureScale, e.clientX - r.left, e.clientY - r.top);
+  gestureScale = e.scale;
+});
+mapEl.addEventListener("gestureend", e => e.preventDefault());
+
+// Labels, legend and scale bar follow the view, at most once per frame
+let overlayRaf = 0, zoomDirty = false;
+function scheduleOverlay(zoomChanged) {
+  zoomDirty = zoomDirty || zoomChanged;
+  if (overlayRaf) return;
+  overlayRaf = requestAnimationFrame(() => {
+    overlayRaf = 0;
+    computeLabels();
+    drawScale();
+    if (zoomDirty) renderLegend();
+    zoomDirty = false;
+    render();
+  });
+}
+
+// ---------- data ----------
+function projectGeometry(g) {
+  if (!g) return g;
+  const map1 = c => c.map(toPx), map2 = c => c.map(map1), map3 = c => c.map(map2);
+  const f = { LineString: map1, MultiLineString: map2, Polygon: map2, MultiPolygon: map3 }[g.type];
+  return f ? { type: g.type, coordinates: f(g.coordinates) } : g;
+}
+const asPx = fc => fc.features.filter(f => f.geometry).map(f => ({ ...f, geometry: projectGeometry(f.geometry) }));
+
+const fontsReady = (document.fonts ? document.fonts.load('700 15px "Alegreya Sans"').then(() =>
+  Promise.all(['500 12px "Alegreya Sans"', '500 16px "Alegreya Sans SC"'].map(f => document.fonts.load(f)))).catch(() => {}) : Promise.resolve());
+
+// Opened as a file (file://), the browser blocks loading the data files: explain how to run it instead
+function showLoadProblem() {
+  if (document.getElementById("loadProblem")) return;
+  const note = document.createElement("div");
+  note.id = "loadProblem";
+  note.className = "panel";
+  note.style.cssText = "position:fixed;left:calc(var(--sidebar) + 24px);right:24px;top:24px;max-width:420px;padding:16px 18px;z-index:5;line-height:1.45";
+  note.innerHTML = location.protocol === "file:"
+    ? `<b>The map can't load when opened as a file.</b><br>Browsers block a local file from reading the map data.
+       Start the local server from the project folder instead:<pre style="margin:10px 0 6px;font:13px var(--font-data)">npm start</pre>
+       That opens <span class="num">http://localhost:8765</span>.`
+    : `<b>The map data didn't load.</b><br>Check your connection and reload the page.`;
+  document.body.appendChild(note);
+}
+if (location.protocol === "file:") showLoadProblem();
+
+Promise.all([d3.json("data/layers.topo.json"), d3.json("data/cities.json"), fontsReady]).then(([topo, cityRows]) => {
+  const L = name => asPx(topojson.feature(topo, topo.objects[name]));
+  const roads = L("roads");
+  const order = { primary: 0, trunk: 1, motorway: 2 };
+  roads.sort((a, b) => order[a.properties.kind] - order[b.properties.kind]);
+  layersData = {
+    lakes: L("lakes"), rivers: L("rivers"), borders: L("borders"), rail: L("rail"),
+    majorRoads: roads.filter(d => d.properties.kind !== "primary"),
+    primaryRoads: roads.filter(d => d.properties.kind === "primary"),
+  };
+  if (roads.some(d => d.properties.src === "osm"))
+    d3.select("#roadSource").text("Roads: © OpenStreetMap contributors (motorway, trunk, primary).");
+
+  cities = cityRows.map(([name, cc, pop, x, y, region, elev, metro], i) => {
+    const [px, py] = toPx([x, y]);
+    return { id: i, name, cc, pop, region, elev, metro, px, py, key: `${name}|${cc}|${x}|${y}` };
+  });
+  setup();
+}).catch(err => { console.error(err); showLoadProblem(); });
+
+// Country and sea names, placed in projected metres
+const REGION_LABELS = [
+  ["SWEDEN", 20000, 30000, 30, 1], ["NORWAY", -320000, -30000, 30, 1],
+  ["DENMARK", -360000, -650000, 18, 1], ["FINLAND", 580000, 160000, 26, 1],
+  ["RUSSIA", 1010000, 210000, 24, 1], ["ESTONIA", 620000, -320000, 15, 1],
+  ["LATVIA", 640000, -520000, 15, 1], ["LITHUANIA", 560000, -710000, 15, 1],
+  ["POLAND", 230000, -970000, 18, 1], ["GERMANY", -320000, -980000, 18, 1],
+  ["SCOTLAND", -1150000, -360000, 15, 1],
+  ["Baltic Sea", 210000, -660000, 17, 0], ["Gulf of Bothnia", 280000, 70000, 15, 0],
+  ["Norwegian Sea", -540000, 500000, 20, 0], ["North Sea", -700000, -550000, 19, 0],
+  ["Skagerrak", -350000, -440000, 13, 0], ["Kattegat", -210000, -570000, 12, 0],
+  ["Gulf of Finland", 610000, -190000, 13, 0], ["White Sea", 1050000, 610000, 15, 0],
+  ["Barents Sea", 700000, 980000, 18, 0], ["Atlantic Ocean", -1100000, 300000, 20, 0],
+].map(([text, x, y, size, country]) => ({
+  // Letter-spaced country names, as on printed maps
+  text: country ? [...text].join(" ") : text, position: toPx([x, y]), size, country,
+}));
+
+// Detailed relief is split into tiles (see build_relief.py); x/y splits in relief pixels
+const RELIEF_TILES = (() => {
+  const xs = [0, 2550, 5100], ys = [0, 2150, 4300], out = [];
+  for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++)
+    out.push({ id: `relief-${j}-${i}`, image: `data/relief-${j}-${i}.jpg`, bounds: [xs[i], ys[j + 1], xs[i + 1], ys[j]] });
+  return out;
+})();
+
+// ---------- layers ----------
+const dash = deck.PathStyleExtension ? [new deck.PathStyleExtension({ dash: true })] : [];
+const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light"
+  || document.documentElement.dataset.theme === "dark";
+const ROAD_STYLE = { motorway: ["--motorway", 1.6], trunk: ["--trunk", 1.25], primary: ["--primary-road", 0.95] };
+const roadColor = Object.fromEntries(Object.entries(ROAD_STYLE).map(([k, [tok]]) => [k, rgb(tok)]));
+
+function lineLayer(id, data, props) {
+  return new deck.GeoJsonLayer({
+    id, data, coordinateSystem: deck.COORDINATE_SYSTEM.CARTESIAN, filled: false, stroked: true,
+    lineWidthUnits: "pixels", lineCapRounded: true, lineJointRounded: true, ...props,
+  });
+}
+
+function roadLayers(id, data, visibleFlag) {
+  const common = { visible: visibleFlag, opacity: 0.8 };
+  return [
+    // Light casing underneath so roads read on both green lowland and brown mountains
+    lineLayer(id + "-casing", data, { ...common, getLineColor: [55, 35, 20, 77], getLineWidth: d => ROAD_STYLE[d.properties.kind][1] + 0.8 }),
+    lineLayer(id, data, { ...common, getLineColor: d => roadColor[d.properties.kind], getLineWidth: d => ROAD_STYLE[d.properties.kind][1] }),
+  ];
+}
+
+function cityFill(d) {
+  const a = d.metro ? 102 : FOCUS.has(d.cc) ? 158 : 115;
+  return d.cc === "SE" ? [...rgb("--sweden").slice(0, 3), a] : FOCUS.has(d.cc) ? [...rgb("--neighbour").slice(0, 3), a] : [...rgb("--context").slice(0, 3), a];
+}
+const cityLine = d => d.cc === "SE" ? [110, 29, 21, 128] : FOCUS.has(d.cc) ? [38, 53, 60, 128] : [93, 104, 108, 128];
+
+let labels = [];
+function render() {
+  if (!layersData) return;
+  const k = view.k, dark = isDark();
+  const layers = [
+    ...[{ id: "relief-outer", image: "data/relief-outer.jpg", bounds: [OX, OY + OH, OX + OW, OY] }, ...RELIEF_TILES].map(t =>
+      new deck.BitmapLayer({
+        id: t.id, image: t.image, bounds: t.bounds, visible: layerOn.relief,
+        tintColor: dark ? [220, 220, 220] : [255, 255, 255],
+        updateTriggers: { tintColor: dark },
+      })),
+    new deck.GeoJsonLayer({
+      id: "lakes", data: layersData.lakes, coordinateSystem: deck.COORDINATE_SYSTEM.CARTESIAN, visible: layerOn.lakes,
+      filled: true, stroked: true, getFillColor: rgb("--water-fill"), getLineColor: rgb("--water"),
+      lineWidthUnits: "pixels", getLineWidth: 0.6,
+    }),
+    lineLayer("rivers", layersData.rivers, {
+      visible: layerOn.rivers, getLineColor: rgb("--water"),
+      getLineWidth: d => d.properties.scalerank != null ? Math.max(0.6, 2.2 - d.properties.scalerank * 0.18) : 0.8,
+    }),
+    lineLayer("borders", layersData.borders, {
+      visible: layerOn.borders, getLineColor: rgb("--border"), getLineWidth: 1.4,
+      extensions: dash, getDashArray: [4, 2], dashJustified: true,
+    }),
+    lineLayer("rail", layersData.rail, {
+      visible: layerOn.rail, getLineColor: [...rgb("--rail").slice(0, 3), 180], getLineWidth: 1,
+      extensions: dash, getDashArray: [4, 2.5], dashJustified: true, lineCapRounded: false,
+    }),
+    ...roadLayers("primary-roads", layersData.primaryRoads, layerOn.roads && k >= 0.4),
+    ...roadLayers("major-roads", layersData.majorRoads, layerOn.roads),
+    new deck.ScatterplotLayer({
+      id: "cities", data: visible, pickable: true, stroked: true,
+      getPosition: d => [d.px, d.py], getRadius: d => Math.sqrt(d.pop) * R_PER_SQRT,
+      radiusUnits: "pixels", radiusScale: zoomGrowth(k), radiusMinPixels: R_MIN,
+      getFillColor: cityFill, getLineColor: cityLine, lineWidthUnits: "pixels", getLineWidth: 0.55,
+      onHover: showTip, onClick: info => { select(info.object); return true; },
+    }),
+    new deck.ScatterplotLayer({
+      id: "selected", data: selected ? [selected] : [], stroked: true, filled: false,
+      getPosition: d => [d.px, d.py], getRadius: d => radius(d.pop, k) + 1, radiusUnits: "pixels",
+      getLineColor: [17, 17, 17, 255], lineWidthUnits: "pixels", getLineWidth: 2.2,
+      updateTriggers: { getRadius: k },
+    }),
+  ];
+  deckgl.setProps({ layers });
+}
+
+function setup() {
+  // Start framed on Sweden (or as close as the zoom limits allow)
+  const { width, height } = viewport();
+  const [x0, y0] = toPx([-300000, 820000]), [x1, y1] = toPx([480000, -830000]);
+  const k = Math.min((width - 40) / (x1 - x0), (height - 40) / (y1 - y0));
+  setView(clampView({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, k }));
+
+  const saved = store.get("minPop", null);
+  if (saved != null) d3.select("#minPop").property("value", saved);
+  for (const cc of [...FOCUS, "XX"]) {
+    const v = store.get("c-" + cc, null);
+    if (v != null) d3.select("#c-" + cc).property("checked", v);
+  }
+  filter();
+  renderShortlist();
+  renderLegend();
+}
+
+function minPop() {
+  const v = +d3.select("#minPop").property("value");
+  return v <= 0 ? 200 : niceStep(popScale.invert(v));
+}
+
+function filter() {
+  const mp = minPop();
+  d3.select("#minPopLabel").text(fmt(mp));
+  const ccs = new Set(d3.selectAll("#countries input[value]").filter(function () { return this.checked; }).nodes().map(n => n.value));
+  const subs = d3.select("#suburbs").property("checked");
+  visible = cities.filter(c => c.pop >= mp && ccs.has(FOCUS.has(c.cc) ? c.cc : "XX") && (subs || !c.metro));
+  // Shortlisted and selected places stay visible regardless of filters
+  const keys = new Set(shortlist.map(s => s.key).concat(selected ? [selected.key] : []));
+  for (const c of cities) if (keys.has(c.key) && !visible.includes(c)) visible.push(c);
+  // Biggest first, so smaller circles are drawn on top and stay clickable
+  visible.sort((a, b) => b.pop - a.pop);
+  const se = visible.filter(c => c.cc === "SE").length;
+  d3.select("#count").text(`${fmt(visible.length)} places shown${ccs.has("SE") ? ` · ${fmt(se)} in Sweden` : ""}`);
+  scheduleOverlay(false);
+}
+
+// Greedy label placement: biggest (and shortlisted) places first, skip any label that would overlap
+function computeLabels() {
+  const k = view.k, { width, height } = viewport();
+  const boxes = [], out = [];
+  const pinned = new Set(shortlist.map(s => s.key));
+  const cand = visible.slice().sort((a, b) => (pinned.has(b.key) - pinned.has(a.key)) || b.pop - a.pop);
+  for (const c of cand) {
+    if (out.length >= 260) break;
+    const isPinned = pinned.has(c.key);
+    if (!isPinned && c.pop < 3000 && k < 3) continue;
+    if (!isPinned && !FOCUS.has(c.cc) && c.pop < (k < 1 ? 150000 : k < 2.5 ? 50000 : 0)) continue;
+    const x = screenX(c.px), y = screenY(c.py);
+    if (x < -50 || y < -20 || x > width + 50 || y > height + 20) continue;
+    const big = c.pop >= 100000, size = big ? 15 : c.pop >= 20000 ? 13 : 12;
+    const r = radius(c.pop, k);
+    const w = c.name.length * size * 0.52;
+    const lx = x + r + 3;
+    const box = [lx - 1, y - size * 0.65, lx + w + 1, y + size * 0.55];
+    if (boxes.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]))) continue;
+    boxes.push(box, [x - r, y - r, x + r, y + r]);
+    out.push({ c, position: [c.px, c.py], offset: [r + 3, 0], size, big, dim: !!c.metro || !FOCUS.has(c.cc) });
+  }
+  labels = out;
+}
+
+// Labels are drawn with native canvas text on top of the WebGL map: WebGL (SDF) text is soft at 12–13 px
+const labelCanvas = Object.assign(document.createElement("canvas"), { id: "labelCanvas" });
+labelCanvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1";
+mapEl.appendChild(labelCanvas);
+const lctx = labelCanvas.getContext("2d");
+const LABEL_FONT = '"Alegreya Sans", "Gill Sans", "Trebuchet MS", sans-serif';
+const REGION_FONT = '"Alegreya Sans SC", "Gill Sans", "Trebuchet MS", sans-serif';
+
+function drawLabelCanvas() {
+  const { width, height } = viewport(), dpr = window.devicePixelRatio || 1;
+  const w = Math.round(width * dpr), h = Math.round(height * dpr);
+  if (labelCanvas.width !== w || labelCanvas.height !== h) { labelCanvas.width = w; labelCanvas.height = h; }
+  lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  lctx.clearRect(0, 0, width, height);
+  lctx.lineJoin = "round";
+  lctx.textBaseline = "middle";
+
+  if (view.k <= 3) {
+    lctx.textAlign = "center";
+    for (const d of REGION_LABELS) {
+      lctx.font = `500 ${d.size}px ${REGION_FONT}`;
+      lctx.fillStyle = d.country ? "rgba(40, 52, 58, .5)" : "rgba(40, 80, 115, .72)";
+      lctx.fillText(d.text, screenX(d.position[0]), screenY(d.position[1]));
+    }
+  }
+
+  lctx.textAlign = "left";
+  for (const l of labels) {
+    const x = screenX(l.c.px) + radius(l.c.pop, view.k) + 3, y = screenY(l.c.py);
+    lctx.font = `${l.big ? 700 : 500} ${l.size}px ${LABEL_FONT}`;
+    lctx.lineWidth = 2;
+    lctx.strokeStyle = "rgba(250, 249, 244, .5)";
+    lctx.strokeText(l.c.name, x, y);
+    lctx.fillStyle = l.dim ? "#4b585c" : "#1f2a2e";
+    lctx.fillText(l.c.name, x, y);
+  }
+}
+
+function drawScale() {
+  const pxPerKm = view.k * 1000 / RES;
+  const target = 110 / pxPerKm;
+  const steps = [5, 10, 20, 25, 50, 100, 200, 250, 500];
+  const km = steps.find(s => s >= target * 0.6) || 500;
+  d3.select("#scaleBar").style("width", Math.round(km * pxPerKm) + "px");
+  d3.select("#scaleText").text(km + " km");
+}
+
+function renderLegend() {
+  const k = view.k;
+  const vals = [10000, 100000, 500000];
+  const rs = vals.map(v => radius(v, k));
+  const svgL = d3.select("#legendSvg");
+  const base = 58;
+  const g = svgL.selectAll("g").data(vals).join("g");
+  let x = 4;
+  g.each(function (v, i) {
+    const r = rs[i], gg = d3.select(this);
+    gg.selectAll("*").remove();
+    gg.append("circle").attr("cx", x + r).attr("cy", base - r - 14).attr("r", r)
+      .attr("fill", css.getPropertyValue("--sweden")).attr("fill-opacity", .62).attr("stroke", "#6e1d15").attr("stroke-width", .55).attr("stroke-opacity", .5);
+    gg.append("text").attr("x", x + r).attr("y", base).attr("text-anchor", "middle").text(v / 1000 + "k");
+    x += Math.max(2 * r, 28) + 18;
+  });
+  svgL.attr("height", Math.min(140, Math.max(64, rs[2] * 2 + 22)));
+  svgL.selectAll("g").attr("transform", `translate(0, ${Math.max(0, rs[2] * 2 + 22 - 64)})`);
+}
+
+const tip = d3.select("#tip");
+function showTip(info) {
+  const d = info.object;
+  if (!d) { tip.attr("hidden", true); return; }
+  const r = mapEl.getBoundingClientRect();
+  tip.attr("hidden", null).html(`<b>${esc(d.name)}</b> · <span class="num">${fmt(d.pop)}</span>`)
+    .style("left", r.left + info.x + 12 + "px").style("top", r.top + info.y + 12 + "px");
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function rankIn(c) {
+  return cities.filter(o => o.cc === c.cc && !o.metro && o.pop > c.pop).length + 1;
+}
+
+function select(c) {
+  selected = c;
+  d3.select("#card").attr("hidden", null);
+  d3.select("#cardName").text(c.name);
+  d3.select("#cardMeta").text([c.region, countryName(c.cc)].filter(Boolean).join(", "));
+  const rows = [["Residents", fmt(c.pop)], [`Size rank in ${countryName(c.cc)}`, c.metro || !FOCUS.has(c.cc) ? "—" : "#" + fmt(rankIn(c))]];
+  if (c.elev != null) rows.push(["Elevation", fmt(c.elev) + " m"]);
+  if (c.metro) rows.push(["Part of", c.metro + " area"]);
+  const near = nearest(c);
+  d3.select("#cardData").html(rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join("") +
+    `<dt>Nearest bigger</dt><dd>${near ? esc(near.c.name) + " · " + Math.round(near.d) + " km" : "—"}</dd>`);
+  const q = encodeURIComponent(`${c.name}, ${countryName(c.cc)}`);
+  d3.select("#cardLinks").html(
+    `<a href="https://en.wikipedia.org/wiki/Special:Search?search=${q}" target="_blank" rel="noopener">Wikipedia</a>` +
+    `<a href="https://www.google.com/maps/search/${q}" target="_blank" rel="noopener">Google Maps</a>`);
+  updateShortBtn();
+  filter();
+}
+function deselect() { selected = null; d3.select("#card").attr("hidden", true); filter(); }
+
+// Nearest city with more residents (straight-line distance; equal-area projection is close to true distance here)
+function nearest(c) {
+  let best = null;
+  for (const o of cities) {
+    if (o.pop <= Math.max(c.pop, 20000) || o.metro) continue;
+    const d = Math.hypot(o.px - c.px, o.py - c.py) * RES / 1000;
+    if (!best || d < best.d) best = { c: o, d };
+  }
+  return best;
+}
+
+function updateShortBtn() {
+  if (!selected) return;
+  const inList = shortlist.some(s => s.key === selected.key);
+  d3.select("#cardShort").text(inList ? "Remove from shortlist" : "Add to shortlist").classed("secondary", inList);
+}
+
+d3.select("#cardShort").on("click", () => {
+  if (!selected) return;
+  const i = shortlist.findIndex(s => s.key === selected.key);
+  if (i >= 0) shortlist.splice(i, 1); else shortlist.push({ key: selected.key, name: selected.name });
+  store.set("shortlist", shortlist);
+  updateShortBtn(); renderShortlist(); filter();
+});
+d3.select("#cardClose").on("click", deselect);
+
+function renderShortlist() {
+  const byKey = new Map(cities.map(c => [c.key, c]));
+  const items = shortlist.map(s => byKey.get(s.key)).filter(Boolean);
+  d3.select("#shortEmpty").attr("hidden", items.length ? true : null);
+  const li = d3.select("#shortItems").selectAll("li").data(items, d => d.key).join("li");
+  li.html(d => `<div class="row"><button class="name">${esc(d.name)}</button><span><span class="num">${fmt(d.pop)}</span><button class="x" aria-label="Remove ${esc(d.name)}">✕</button></span></div>`);
+  li.select("button.name").on("click", (e, d) => flyTo(d));
+  li.select("button.x").on("click", (e, d) => {
+    shortlist = shortlist.filter(s => s.key !== d.key); store.set("shortlist", shortlist);
+    renderShortlist(); updateShortBtn(); filter();
+  });
+}
+
+function flyTo(c) {
+  animateTo({ x: c.px, y: c.py, k: Math.max(view.k, 2.5) }, 900);
+  select(c);
+}
+
+// Search
+const results = d3.select("#results");
+let hits = [], active = 0;
+d3.select("#search").on("input", function () {
+  const q = this.value.trim().toLocaleLowerCase("sv");
+  if (q.length < 2) { results.attr("hidden", true); return; }
+  const norm = s => s.toLocaleLowerCase("sv");
+  hits = cities.filter(c => norm(c.name).startsWith(q)).concat(cities.filter(c => !norm(c.name).startsWith(q) && norm(c.name).includes(q)))
+    .slice(0, 8);
+  active = 0;
+  renderHits();
+}).on("keydown", e => {
+  if (results.attr("hidden") != null) return;
+  if (e.key === "ArrowDown") { active = Math.min(active + 1, hits.length - 1); renderHits(); e.preventDefault(); }
+  if (e.key === "ArrowUp") { active = Math.max(active - 1, 0); renderHits(); e.preventDefault(); }
+  if (e.key === "Enter" && hits[active]) pick(hits[active]);
+  if (e.key === "Escape") results.attr("hidden", true);
+});
+function renderHits() {
+  results.attr("hidden", hits.length ? null : true);
+  results.selectAll("li").data(hits).join("li")
+    .attr("aria-selected", (d, i) => i === active)
+    .html(d => `<span>${esc(d.name)} <span class="num">${d.cc}</span></span><span class="pop">${fmt(d.pop)}</span>`)
+    .on("click", (e, d) => pick(d));
+}
+function pick(c) { results.attr("hidden", true); d3.select("#search").property("value", c.name); flyTo(c); }
+
+// Controls
+d3.select("#minPop").on("input", function () { store.set("minPop", +this.value); filter(); });
+d3.selectAll("#countries input").on("change", function () { if (this.value) store.set("c-" + this.value, this.checked); filter(); });
+for (const name of ["roads", "rail", "rivers", "lakes", "borders", "relief"]) {
+  const box = d3.select("#l-" + name);
+  const saved = store.get("l-" + name, null);
+  if (saved != null) box.property("checked", saved);
+  layerOn[name] = box.property("checked");
+  box.on("change", () => { layerOn[name] = box.property("checked"); store.set("l-" + name, layerOn[name]); render(); });
+}
+d3.select("#zin").on("click", () => animateTo({ ...view, k: view.k * 1.6 }, 300));
+d3.select("#zout").on("click", () => animateTo({ ...view, k: view.k / 1.6 }, 300));
+d3.select("#togglePanel").on("click", function () {
+  const c = d3.select("#controls").classed("collapsed");
+  d3.select("#controls").classed("collapsed", !c);
+  this.textContent = c ? "Hide" : "Filters";
+  this.setAttribute("aria-expanded", String(c));
+});
+addEventListener("resize", () => setView(clampView(view)));
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => render());
+</script>

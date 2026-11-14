@@ -1,0 +1,16 @@
+{
+  "name": "scanmap",
+  "version": "1.0.0",
+  "description": "Equal-area trip-planning map of Scandinavia",
+  "main": "index.js",
+  "scripts": {
+    "start": "echo 'Map running at http://localhost:8765' && (sleep 1 && open http://localhost:8765) & python3 -m http.server 8765 -d web"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "mapshaper": "^0.6.121"
+  }
+}
